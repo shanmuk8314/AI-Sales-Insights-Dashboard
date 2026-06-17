@@ -1,0 +1,19 @@
+Date,Product,Category,Region,UnitsSold,UnitPrice
+2026-05-01,MediCure Beta,Antibiotics,North,150,12.50
+2026-05-03,SurgiGlove X,Surgicals,South,300,4.20
+2026-05-04,CardioVit,Cardiology,East,80,45.00
+2026-05-06,MediCure Beta,Antibiotics,West,220,12.50
+2026-05-10,PulseMax,Devices,North,45,150.00
+2026-05-12,SurgiGlove X,Surgicals,West,450,4.20
+2026-05-15,BandAid Pro,First Aid,South,1200,1.50
+2026-05-20,CardioVit,Cardiology,North,110,45.00
+2026-05-22,PulseMax,Devices,South,60,150.00
+2026-05-25,MediCure Beta,Antibiotics,South,180,12.50
+2026-06-01,MediCure Beta,Antibiotics,North,160,12.50
+2026-06-02,SurgiGlove X,Surgicals,South,120,4.20
+2026-06-04,CardioVit,Cardiology,East,95,45.00
+2026-06-06,MediCure Beta,Antibiotics,West,240,12.50
+2026-06-07,PulseMax,Devices,North,15,150.00
+2026-06-10,SurgiGlove X,Surgicals,West,190,4.20
+2026-06-11,BandAid Pro,First Aid,South,1350,1.50
+2026-06-12,CardioVit,Cardiology,North,115,45.00
