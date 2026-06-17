@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { Sparkles, FileText, Award, MapPin, TrendingDown, Lightbulb, AlertTriangle, Loader2 } from 'lucide-react';
+import { API_URL } from '../config/api';
 
 function InsightsPage({ setCurrentPage }) {
   const [data, setData] = useState(null);
@@ -45,7 +46,7 @@ function InsightsPage({ setCurrentPage }) {
 
   const fetchInsights = async (forceRefresh = false) => {
     try {
-      const url = forceRefresh ? '/api/ai-insights?refresh=true' : '/api/ai-insights';
+      const url = forceRefresh ? `${API_URL}/api/ai-insights?refresh=true` : `${API_URL}/api/ai-insights`;
       const res = await axios.get(url);
       if (res.data.success && res.data.insights) {
         console.log('Successfully fetched insights from Gemini AI.');
@@ -59,10 +60,10 @@ function InsightsPage({ setCurrentPage }) {
     }
 
     // Fallback to rule-based insights
-    const res = await axios.get('/api/insights');
+    const res = await axios.get(`${API_URL}/api/insights`);
     if (res.data.success) {
       // Fetch database status to set metadata counts
-      const dbStatusRes = await axios.get('/api/database-status').catch(() => null);
+      const dbStatusRes = await axios.get(`${API_URL}/api/database-status`).catch(() => null);
       if (dbStatusRes && dbStatusRes.data) {
         setMetadata({
           totalRecords: dbStatusRes.data.salesCount,

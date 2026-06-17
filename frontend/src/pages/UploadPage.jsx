@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../config/api';
 import FileUpload from '../components/FileUpload';
 import { CheckCircle2, X, Clock, ArrowRight, Database } from 'lucide-react';
 
@@ -20,7 +21,7 @@ function UploadPage({ onUploadSuccess }) {
   };
 
   const fetchHistory = async () => {
-    const res = await axios.get('/api/upload-history');
+    const res = await axios.get(`${API_URL}/api/upload-history`);
     if (res.data.success) {
       return res.data.history;
     } else {

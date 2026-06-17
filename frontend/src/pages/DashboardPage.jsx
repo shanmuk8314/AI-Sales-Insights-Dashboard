@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_URL } from '../config/api';
 import KPICards from '../components/Dashboard/KPICards';
 import SalesCharts from '../components/Dashboard/SalesCharts';
 import RecentSalesTable from '../components/Dashboard/RecentSalesTable';
@@ -11,7 +12,7 @@ function DashboardPage({ setCurrentPage }) {
   const [error, setError] = useState(null);
 
   const fetchDashboardData = async () => {
-    const res = await axios.get('/api/dashboard');
+    const res = await axios.get(`${API_URL}/api/dashboard`);
     if (res.data.success) {
       return res.data;
     } else {
