@@ -1,28 +1,34 @@
 const fs = require('fs');
 const path = require('path');
+module.paths.push(path.join(__dirname, '../backend/node_modules'));
 const csv = require('csv-parser');
-const mongoose = require('mongoose');
-
-// Mock Environment
-process.env.MONGO_URI = 'mongodb://127.0.0.1:27017/sales_insights_test';
-
+require('dotenv').config({ path: path.join(__dirname, '../backend/.env') });
+const { pool, testConnection } = require('../backend/config/postgres');
 const Sale = require('../backend/models/Sale');
 
 async function runTest() {
-  console.log('--- STARTING SALES DASHBOARD INTEGRATION TEST ---');
+  console.log('--- STARTING SALES DASHBOARD INTEGRATION TEST (PostgreSQL) ---');
 
   // 1. Connect database
   try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('✔ MongoDB Connected Successfully.');
+    const connected = await testConnection();
+    if (!connected) {
+      throw new Error('Could not connect to PostgreSQL');
+    }
+    console.log('✔ PostgreSQL Connected Successfully.');
   } catch (err) {
     console.error('✖ Database Connection Failed:', err.message);
     process.exit(1);
   }
 
   // Clear previous test records
-  await Sale.deleteMany({});
-  console.log('✔ Cleaned test database collection.');
+  try {
+    await pool.query('DELETE FROM sales WHERE upload_id = $1', ['test-upload-uuid-12345']);
+    console.log('✔ Cleaned test database collection.');
+  } catch (err) {
+    console.error('✖ Failed to clean database:', err.message);
+    process.exit(1);
+  }
 
   // 2. Parse mock CSV file
   const csvFilePath = path.join(__dirname, '../scratch/sample_sales.csv');
@@ -46,9 +52,12 @@ async function runTest() {
       const unitsSoldVal = parseInt(row.unitsSold || row.UnitsSold || row.units_sold, 10);
       const unitPriceVal = parseFloat(row.unitPrice || row.UnitPrice || row.unit_price);
 
-      if (dateVal && productVal && categoryVal && regionVal && !isNaN(unitsSoldVal) && !isNaN(unitPriceVal)) {
+      const parsedDate = dateVal ? new Date(dateVal) : null;
+      const isValidDate = parsedDate && !isNaN(parsedDate.getTime());
+
+      if (isValidDate && productVal && categoryVal && regionVal && !isNaN(unitsSoldVal) && !isNaN(unitPriceVal)) {
         salesToInsert.push({
-          date: new Date(dateVal),
+          date: parsedDate,
           product: productVal.trim(),
           category: categoryVal.trim(),
           region: regionVal.trim(),
@@ -61,11 +70,11 @@ async function runTest() {
     })
     .on('end', async () => {
       try {
-        console.log(`Parsed ${salesToInsert.length} lines. Saving to MongoDB...`);
+        console.log(`Parsed ${salesToInsert.length} lines. Saving to PostgreSQL...`);
         
         // Save
         const result = await Sale.insertMany(salesToInsert);
-        console.log(`✔ Successfully inserted ${result.length} sales records into MongoDB.`);
+        console.log(`✔ Successfully inserted ${result.length} sales records into PostgreSQL.`);
 
         // 3. Test Dashboard Aggregations
         console.log('Testing Dashboard aggregate pipelines...');
@@ -133,14 +142,14 @@ async function runTest() {
         console.log('✔ Declining Products found (>10% drop):', decliningProducts);
 
         // Clean up test data and exit
-        await Sale.deleteMany({});
-        await mongoose.disconnect();
+        await pool.query('DELETE FROM sales WHERE upload_id = $1', ['test-upload-uuid-12345']);
+        await pool.end();
         console.log('✔ Cleaned up database and disconnected.');
         console.log('--- INTEGRATION TEST PASSED SUCCESSFULLY ---');
         process.exit(0);
       } catch (err) {
         console.error('✖ Integration test failed:', err);
-        await mongoose.disconnect();
+        await pool.end();
         process.exit(1);
       }
     })

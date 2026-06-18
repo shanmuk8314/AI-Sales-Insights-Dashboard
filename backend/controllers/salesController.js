@@ -7,6 +7,15 @@ const { pool } = require('../config/postgres');
 const UploadHistory = require('../models/UploadHistory');
 const { calculateGrowthMetrics } = require('../utils/growthCalculator');
 
+const safeUnlinkSync = (filePath) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    console.error(`Failed to delete file at ${filePath}:`, err.message);
+  }
+};
 
 exports.uploadCSV = async (req, res) => {
   if (!req.file) {
@@ -61,11 +70,14 @@ exports.uploadCSV = async (req, res) => {
       const unitsSoldVal = parseInt(unitsSoldStr, 10);
       const unitPriceVal = parseFloat(unitPriceStr);
 
-      if (dateVal && productVal && categoryVal && regionVal && !isNaN(unitsSoldVal) && !isNaN(unitPriceVal)) {
+      const parsedDate = dateVal ? new Date(dateVal) : null;
+      const isValidDate = parsedDate && !isNaN(parsedDate.getTime());
+
+      if (isValidDate && productVal && categoryVal && regionVal && !isNaN(unitsSoldVal) && !isNaN(unitPriceVal)) {
         const calculatedRevenue = unitsSoldVal * unitPriceVal;
         
         salesToInsert.push({
-          date: new Date(dateVal),
+          date: parsedDate,
           product: productVal.trim(),
           category: categoryVal.trim(),
           region: regionVal.trim(),
@@ -80,16 +92,14 @@ exports.uploadCSV = async (req, res) => {
     .on('end', async () => {
       try {
         if (validationError) {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          safeUnlinkSync(filePath);
+          if (res.headersSent) return;
           return res.status(400).json({ success: false, message: validationError });
         }
 
         if (salesToInsert.length === 0) {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          safeUnlinkSync(filePath);
+          if (res.headersSent) return;
           return res.status(400).json({ success: false, message: 'No valid sales data found in CSV.' });
         }
 
@@ -126,9 +136,8 @@ exports.uploadCSV = async (req, res) => {
         }
 
         if (uniqueSalesToInsert.length === 0) {
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
+          safeUnlinkSync(filePath);
+          if (res.headersSent) return;
           return res.status(400).json({ 
             success: false, 
             message: 'CSV upload rejected. All records in this file already exist in the database (duplicate file upload).' 
@@ -139,9 +148,7 @@ exports.uploadCSV = async (req, res) => {
         await Sale.insertMany(uniqueSalesToInsert);
 
         // Clean up file
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
+        safeUnlinkSync(filePath);
 
         // Calculate upload summary dynamically from the unique records
         const revenue = uniqueSalesToInsert.reduce((sum, item) => sum + item.revenue, 0);
@@ -218,6 +225,7 @@ exports.uploadCSV = async (req, res) => {
           successMsg += ` Skipped ${skippedDbDuplicates} duplicate records already in database, and ${skippedCsvDuplicates} duplicate records within the CSV file itself.`;
         }
 
+        if (res.headersSent) return;
         return res.status(200).json({
           success: true,
           message: successMsg,
@@ -233,15 +241,19 @@ exports.uploadCSV = async (req, res) => {
           }
         });
       } catch (error) {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
+        safeUnlinkSync(filePath);
+        if (res.headersSent) {
+          console.error('Error occurred after response sent:', error);
+          return;
         }
         return res.status(500).json({ success: false, message: 'Database saving failed.', error: error.message });
       }
     })
     .on('error', (error) => {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      safeUnlinkSync(filePath);
+      if (res.headersSent) {
+        console.error('Stream error occurred after response sent:', error);
+        return;
       }
       return res.status(500).json({ success: false, message: 'CSV parsing failed.', error: error.message });
     });

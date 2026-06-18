@@ -1,62 +1,5 @@
-const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-
-const SaleSchema = new mongoose.Schema({
-  date: {
-    type: Date,
-    required: true,
-    index: true
-  },
-  product: {
-    type: String,
-    required: true,
-    trim: true,
-    index: true
-  },
-  category: {
-    type: String,
-    required: true,
-    trim: true,
-    index: true
-  },
-  region: {
-    type: String,
-    required: true,
-    trim: true,
-    index: true
-  },
-  unitsSold: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-  unitPrice: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-  revenue: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-  uploadId: {
-    type: String,
-    required: true,
-    index: true
-  }
-}, {
-  timestamps: true
-});
-
-// Auto-calculate/verify revenue before saving
-SaleSchema.pre('save', function (next) {
-  this.revenue = this.unitsSold * this.unitPrice;
-  next();
-});
-
-const RealSaleModel = mongoose.model('Sale', SaleSchema);
 
 // Fallback JSON-based Mock database path for backup
 const dbPath = path.join(__dirname, '../uploads/sales_db.json');
@@ -193,34 +136,47 @@ const MockSaleModel = {
 
     const insertedRows = [];
     const batchSize = 100;
-    for (let i = 0; i < preparedDocs.length; i += batchSize) {
-      const batch = preparedDocs.slice(i, i + batchSize);
-      const values = [];
-      const valuePlaceholders = [];
-      let paramIndex = 1;
+    const client = await pool.connect();
 
-      for (const sale of batch) {
-        values.push(
-          new Date(sale.date),
-          sale.product,
-          sale.category,
-          sale.region,
-          sale.unitsSold,
-          sale.unitPrice,
-          sale.revenue,
-          sale.uploadId
-        );
-        valuePlaceholders.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7})`);
-        paramIndex += 8;
+    try {
+      await client.query('BEGIN');
+
+      for (let i = 0; i < preparedDocs.length; i += batchSize) {
+        const batch = preparedDocs.slice(i, i + batchSize);
+        const values = [];
+        const valuePlaceholders = [];
+        let paramIndex = 1;
+
+        for (const sale of batch) {
+          values.push(
+            new Date(sale.date),
+            sale.product,
+            sale.category,
+            sale.region,
+            sale.unitsSold,
+            sale.unitPrice,
+            sale.revenue,
+            sale.uploadId
+          );
+          valuePlaceholders.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7})`);
+          paramIndex += 8;
+        }
+
+        const query = `
+          INSERT INTO sales (sale_date, product, category, region, units_sold, unit_price, revenue, upload_id)
+          VALUES ${valuePlaceholders.join(', ')}
+          RETURNING *
+        `;
+        const res = await client.query(query, values);
+        insertedRows.push(...res.rows);
       }
 
-      const query = `
-        INSERT INTO sales (sale_date, product, category, region, units_sold, unit_price, revenue, upload_id)
-        VALUES ${valuePlaceholders.join(', ')}
-        RETURNING *
-      `;
-      const res = await pool.query(query, values);
-      insertedRows.push(...res.rows);
+      await client.query('COMMIT');
+    } catch (transactionErr) {
+      await client.query('ROLLBACK');
+      throw transactionErr;
+    } finally {
+      client.release();
     }
 
     // Write to local JSON backup

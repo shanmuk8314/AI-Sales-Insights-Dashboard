@@ -1,23 +1,5 @@
-const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
-
-const UploadHistorySchema = new mongoose.Schema({
-  fileName: { type: String, required: true },
-  timestamp: { type: Date, default: Date.now, required: true },
-  recordsCount: { type: Number, required: true },
-  revenue: { type: Number, required: true },
-  uploadId: { type: String, required: true, index: true },
-  summary: {
-    topProduct: String,
-    bestTerritory: String,
-    needsAttention: String,
-    startDate: Date,
-    endDate: Date
-  }
-}, { timestamps: true });
-
-const RealUploadHistoryModel = mongoose.model('UploadHistory', UploadHistorySchema);
 
 // Fallback JSON-based Mock database path for backup
 const dbPath = path.join(__dirname, '../uploads/upload_history.json');
