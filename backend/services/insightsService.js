@@ -29,68 +29,38 @@ const formatNumber = (val) => {
  * - decliningProducts
  * - recommendations
  */
-exports.generateSalesInsights = async () => {
+exports.generateSalesInsights = async (filters = {}) => {
   // Find latest date in database to anchor our 30-day windows
-  const maxDateRecord = await Sale.findOne().sort({ date: -1 });
+  const maxDateRecord = await Sale.findOne({}, filters).sort({ date: -1 });
   
+  const emptyPayload = {
+    executiveSummary: 'No sales records found. Please upload a CSV file to show sales numbers.',
+    productAnalysis: {
+      topProduct: { productName: 'N/A', revenue: 'N/A', reason: 'No product data.', recommendation: 'Upload sales records.' },
+      moderateProduct: { productName: 'N/A', revenue: 'N/A', reason: 'No product data.', suggestion: 'Upload sales records.' },
+      weakProduct: { productName: 'N/A', revenue: 'N/A', reason: 'No product data.', suggestion: 'Upload sales records.' }
+    },
+    territoryAnalysis: {
+      strongTerritory: { territoryName: 'N/A', revenue: 'N/A', observation: 'No territory data.', recommendation: 'Upload sales records.' },
+      moderateTerritory: { territoryName: 'N/A', revenue: 'N/A', observation: 'No territory data.', recommendation: 'Upload sales records.' },
+      weakTerritory: { territoryName: 'N/A', revenue: 'N/A', observation: 'No territory data.', recommendation: 'Upload sales records.' }
+    },
+    trendAnalysis: {
+      previousMonthRevenue: '₹0',
+      currentMonthRevenue: '₹0',
+      growthPercentage: '0%',
+      insight: 'Upload sales records to see monthly performance trends.'
+    },
+    recommendations: [
+      'Upload sales records to get sales recommendations.'
+    ]
+  };
+
   if (!maxDateRecord) {
-    return {
-      executiveSummary: [
-        {
-          title: 'Revenue',
-          text: 'No sales records found. Please upload a CSV file to show sales numbers.',
-          status: 'yellow',
-          highlight: 'No Data'
-        },
-        {
-          title: 'Total Invoices',
-          text: 'Upload sales records to track invoices and billing numbers.',
-          status: 'yellow',
-          highlight: 'No Data'
-        }
-      ],
-      topProducts: [
-        {
-          title: 'Top Product',
-          text: 'Upload sales records to see your best-selling product lines.',
-          status: 'green',
-          highlight: 'No Data'
-        },
-        {
-          title: 'Top Shipped Packs',
-          text: 'Track product shipments across different items.',
-          status: 'green',
-          highlight: 'No Data'
-        }
-      ],
-      weakTerritories: [
-        {
-          title: 'Weak Region',
-          text: 'Please upload sales records to identify weak regions.',
-          status: 'red',
-          highlight: 'No Data'
-        }
-      ],
-      decliningProducts: [
-        {
-          title: 'Sales Drop',
-          text: 'No product details found. Upload a CSV file to monitor sales drops.',
-          status: 'green',
-          highlight: 'No Data'
-        }
-      ],
-      recommendations: [
-        {
-          title: 'Recommended Action',
-          text: 'Upload sales records to get sales recommendations.',
-          status: 'yellow',
-          highlight: 'Audit Needed'
-        }
-      ]
-    };
+    return emptyPayload;
   }
 
-  const metrics = await calculateGrowthMetrics();
+  const metrics = await calculateGrowthMetrics(filters);
   const {
     latestDate,
     thirtyDaysAgo,
@@ -101,255 +71,127 @@ exports.generateSalesInsights = async () => {
     previousTransactions: previousCount
   } = metrics;
 
-  const execSummary = [];
-
-  // Card 1: Revenue
-  if (previousTotal === 0) {
-    execSummary.push({
-      title: 'Revenue',
-      text: `Sales reached **${formatCurrency(recentTotal)}** over the last 30 days. We need more data to compare trends.`,
-      status: 'green',
-      highlight: formatCurrency(recentTotal)
-    });
-  } else {
-    const diff = recentTotal - previousTotal;
-    const changePct = (diff / previousTotal) * 100;
-    
-    if (diff > 0) {
-      execSummary.push({
-        title: 'Revenue',
-        text: `Sales reached **${formatCurrency(recentTotal)}**. This is a **${changePct.toFixed(1)}%** growth compared to last month. Sales are growing steadily.`,
-        status: 'green',
-        highlight: `+${changePct.toFixed(1)}%`
-      });
-    } else {
-      const dropPct = Math.abs(changePct);
-      const statusLevel = dropPct > 15 ? 'red' : 'yellow';
-      execSummary.push({
-        title: 'Revenue',
-        text: `Sales fell by **${dropPct.toFixed(1)}%** to **${formatCurrency(recentTotal)}**. We should focus on increasing sales.`,
-        status: statusLevel,
-        highlight: `-${dropPct.toFixed(1)}%`
-      });
-    }
-  }
-
-  // Card 2: Total Invoices
-  if (previousCount === 0) {
-    execSummary.push({
-      title: 'Total Invoices',
-      text: `We processed **${formatNumber(recentCount)} invoices** in the last 30 days. This is our starting point.`,
-      status: 'green',
-      highlight: `${recentCount} Invoices`
-    });
-  } else {
-    const diff = recentCount - previousCount;
-    const changePct = (diff / previousCount) * 100;
-    
-    if (diff >= 0) {
-      execSummary.push({
-        title: 'Total Invoices',
-        text: `Invoices grew by **${changePct.toFixed(1)}%** to **${formatNumber(recentCount)}**. We are getting more customers.`,
-        status: 'green',
-        highlight: `+${changePct.toFixed(1)}%`
-      });
-    } else {
-      const dropPct = Math.abs(changePct);
-      execSummary.push({
-        title: 'Total Invoices',
-        text: `Processed invoices fell by **${dropPct.toFixed(1)}%** to **${formatNumber(recentCount)}**. Sales activity is down.`,
-        status: 'yellow',
-        highlight: `-${dropPct.toFixed(1)}%`
-      });
-    }
-  }
-
-  // --- 2. TOP PRODUCTS SECTION ---
+  // --- 1. PRODUCT ANALYSIS SECTION ---
   const recentProductSales = await Sale.aggregate([
     { $match: { date: { $gte: thirtyDaysAgo, $lte: latestDate } } },
     { $group: { _id: '$product', revenue: { $sum: '$revenue' }, units: { $sum: '$unitsSold' } } },
     { $sort: { revenue: -1 } }
-  ]);
+  ], filters);
 
-  const topProducts = [];
-  if (recentProductSales.length > 0) {
-    const topRevenueProd = recentProductSales[0];
-    const portfolioShare = recentTotal > 0 ? (topRevenueProd.revenue / recentTotal) * 100 : 0;
-    topProducts.push({
-      title: 'Top Product',
-      text: `**${topRevenueProd._id}** made **${formatCurrency(topRevenueProd.revenue)}** (**${portfolioShare.toFixed(1)}%** of sales). It is our best-selling product.`,
-      status: 'green',
-      highlight: topRevenueProd._id
-    });
-
-    // Top units sold product
-    const unitSorted = [...recentProductSales].sort((a, b) => b.units - a.units);
-    const topUnitsProd = unitSorted[0];
-    topProducts.push({
-      title: 'Top Shipped Packs',
-      text: `**${topUnitsProd._id}** shipped **${formatNumber(topUnitsProd.units)} packs**. Sales are strong.`,
-      status: 'green',
-      highlight: topUnitsProd._id
-    });
-  } else {
-    topProducts.push({
-      title: 'Top Product',
-      text: 'No product sales recorded in this period.',
-      status: 'yellow',
-      highlight: 'N/A'
-    });
+  if (recentProductSales.length === 0) {
+    return emptyPayload;
   }
 
-  // --- 3. WEAK TERRITORIES SECTION ---
+  const topProductObj = recentProductSales[0];
+  const weakProductObj = recentProductSales.length > 1 ? recentProductSales[recentProductSales.length - 1] : null;
+  const moderateProductObj = recentProductSales.length > 2 ? recentProductSales[Math.floor(recentProductSales.length / 2)] : null;
+
+  const topProdName = topProductObj._id;
+  const topProdRevStr = `${formatCurrency(topProductObj.revenue)} (${((topProductObj.revenue / recentTotal) * 100).toFixed(1)}%)`;
+  
+  const modProdName = moderateProductObj ? moderateProductObj._id : 'N/A';
+  const modProdRevStr = moderateProductObj ? `${formatCurrency(moderateProductObj.revenue)} (${((moderateProductObj.revenue / recentTotal) * 100).toFixed(1)}%)` : 'N/A';
+
+  const weakProdName = weakProductObj ? weakProductObj._id : 'N/A';
+  const weakProdRevStr = weakProductObj ? `${formatCurrency(weakProductObj.revenue)} (${((weakProductObj.revenue / recentTotal) * 100).toFixed(1)}%)` : 'N/A';
+
+  // --- 2. TERRITORY ANALYSIS SECTION ---
   const regionSales = await Sale.aggregate([
     { $match: { date: { $gte: thirtyDaysAgo, $lte: latestDate } } },
     { $group: { _id: '$region', revenue: { $sum: '$revenue' } } },
     { $sort: { revenue: 1 } } // ascending, first is lowest
-  ]);
+  ], filters);
 
-  const weakTerritories = [];
-  if (regionSales.length > 0) {
-    const weakestReg = regionSales[0];
-    const regionalShare = recentTotal > 0 ? (weakestReg.revenue / recentTotal) * 100 : 0;
-    weakTerritories.push({
-      title: 'Weak Region',
-      text: `The **${weakestReg._id}** region has low sales. It made **${formatCurrency(weakestReg.revenue)}** (**${regionalShare.toFixed(1)}%** of sales).`,
-      status: 'red',
-      highlight: weakestReg._id
-    });
+  const weakRegObj = regionSales[0];
+  const strongRegObj = regionSales.length > 1 ? regionSales[regionSales.length - 1] : null;
+  const moderateRegObj = regionSales.length > 2 ? regionSales[Math.floor(regionSales.length / 2)] : null;
 
-    if (regionSales.length > 1) {
-      const secondWeakestReg = regionSales[1];
-      const secondShare = recentTotal > 0 ? (secondWeakestReg.revenue / recentTotal) * 100 : 0;
-      weakTerritories.push({
-        title: 'Secondary Weak Region',
-        text: `The **${secondWeakestReg._id}** region has flat growth. It made **${formatCurrency(secondWeakestReg.revenue)}** (**${secondShare.toFixed(1)}%** of sales).`,
-        status: 'yellow',
-        highlight: secondWeakestReg._id
-      });
-    }
+  const strongTerrName = strongRegObj ? strongRegObj._id : (weakRegObj ? weakRegObj._id : 'N/A');
+  const strongTerrRevStr = strongRegObj 
+    ? `${formatCurrency(strongRegObj.revenue)} (${((strongRegObj.revenue / recentTotal) * 100).toFixed(1)}%)` 
+    : (weakRegObj ? `${formatCurrency(weakRegObj.revenue)} (100.0%)` : 'N/A');
+
+  const modTerrName = moderateRegObj ? moderateRegObj._id : 'N/A';
+  const modTerrRevStr = moderateRegObj ? `${formatCurrency(moderateRegObj.revenue)} (${((moderateRegObj.revenue / recentTotal) * 100).toFixed(1)}%)` : 'N/A';
+
+  const weakTerrName = weakRegObj ? weakRegObj._id : 'N/A';
+  const weakTerrRevStr = weakRegObj ? `${formatCurrency(weakRegObj.revenue)} (${((weakRegObj.revenue / recentTotal) * 100).toFixed(1)}%)` : 'N/A';
+
+  // --- 3. TREND ANALYSIS SECTION ---
+  let growthPercentage = '0.0%';
+  let diff = recentTotal - previousTotal;
+  let direction = diff >= 0 ? 'increased' : 'decreased';
+  if (previousTotal > 0) {
+    const changePct = (diff / previousTotal) * 100;
+    growthPercentage = `${changePct >= 0 ? '+' : ''}${changePct.toFixed(1)}%`;
   } else {
-    weakTerritories.push({
-      title: 'Weak Region',
-      text: 'No regional sales data available.',
-      status: 'yellow',
-      highlight: 'N/A'
-    });
+    growthPercentage = '+100.0%'; // starting growth
   }
 
-  // --- 4. DECLINING PRODUCTS SECTION ---
-  const previousProductSales = await Sale.aggregate([
-    { $match: { date: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo } } },
-    { $group: { _id: '$product', revenue: { $sum: '$revenue' } } }
-  ]);
+  const trendInsight = previousTotal > 0 
+    ? `Revenue ${direction} by ${growthPercentage} compared to the previous month. ${topProdName} remained the strongest product. ${strongTerrName} region continued to lead sales while ${weakTerrName} region requires additional focus.`
+    : `Initial month tracked. Sales reached ${formatCurrency(recentTotal)} led by ${topProdName} in the ${strongTerrName} region.`;
 
-  const productDecline = [];
-  const recentProdMap = new Map(recentProductSales.map(item => [item._id, item.revenue]));
+  // --- 4. EXECUTIVE SUMMARY SECTION ---
+  const executiveSummary = previousTotal > 0
+    ? `Revenue ${direction} by ${growthPercentage} compared to the previous month. ${topProdName} remained the strongest product. ${strongTerrName} region continued to lead sales while ${weakTerrName} region requires additional focus.`
+    : `Mediwave Life Sciences registered total sales revenue of ${formatCurrency(recentTotal)} led by ${topProdName} contributing ${topProdRevStr} of sales.`;
 
-  previousProductSales.forEach(item => {
-    const prevRevenue = item.revenue;
-    const recentRevenue = recentProdMap.get(item._id) || 0;
-    const dropAmount = prevRevenue - recentRevenue;
-    
-    if (dropAmount > 0 && prevRevenue > 0) {
-      const dropPercentage = (dropAmount / prevRevenue) * 100;
-      productDecline.push({
-        product: item._id,
-        dropAmount,
-        dropPercentage
-      });
-    }
-  });
-
-  productDecline.sort((a, b) => b.dropAmount - a.dropAmount);
-
-  const decliningProducts = [];
-  if (productDecline.length > 0) {
-    const worstDecline = productDecline[0];
-    const statusLevel = worstDecline.dropPercentage > 15 ? 'red' : 'yellow';
-    decliningProducts.push({
-      title: 'Sales Drop',
-      text: `**${worstDecline.product}** sales dropped by **${worstDecline.dropPercentage.toFixed(1)}%**. This is a loss of **${formatCurrency(worstDecline.dropAmount)}**.`,
-      status: statusLevel,
-      highlight: worstDecline.product
-    });
-
-    if (productDecline.length > 1) {
-      const secondDecline = productDecline[1];
-      decliningProducts.push({
-        title: 'Other Sales Drop',
-        text: `**${secondDecline.product}** sales fell by **${secondDecline.dropPercentage.toFixed(1)}%**. This is a slight drop.`,
-        status: 'yellow',
-        highlight: secondDecline.product
-      });
-    } else {
-      decliningProducts.push({
-        title: 'Other Sales Drop',
-        text: 'All other products have stable sales.',
-        status: 'green',
-        highlight: 'Stable'
-      });
-    }
-  } else {
-    decliningProducts.push({
-      title: 'Sales Drop',
-      text: 'All product lines have stable or growing sales.',
-      status: 'green',
-      highlight: 'Stable'
-    });
-  }
-
-  // --- 5. RECOMMENDATIONS SECTION ---
-  const recommendations = [];
-
-  // Recommended Action
-  if (productDecline.length > 0 && productDecline[0].dropPercentage > 15) {
-    recommendations.push({
-      title: 'Recommended Action',
-      text: `Start promotions for **${productDecline[0].product}** to stop the **${productDecline[0].dropPercentage.toFixed(1)}%** drop.`,
-      status: 'red',
-      highlight: 'Promotional Push'
-    });
-  } else if (regionSales.length > 0) {
-    recommendations.push({
-      title: 'Recommended Action',
-      text: `Check stock levels in the **${regionSales[0]._id}** region.`,
-      status: 'red',
-      highlight: 'Supply Check'
-    });
-  } else {
-    recommendations.push({
-      title: 'Recommended Action',
-      text: 'Keep the current sales plan. Check for new sales updates.',
-      status: 'green',
-      highlight: 'Maintain Status'
-    });
-  }
-
-  // Sales Strategy
-  if (recentProductSales.length > 0 && regionSales.length > 0) {
-    const topRevenueProd = recentProductSales[0];
-    const weakestReg = regionSales[0]._id;
-    recommendations.push({
-      title: 'Sales Strategy',
-      text: `Offer discounts for **${topRevenueProd._id}** in the **${weakestReg}** region.`,
-      status: 'yellow',
-      highlight: 'Expand Reach'
-    });
-  } else {
-    recommendations.push({
-      title: 'Sales Strategy',
-      text: 'Look into expanding product categories as we get more data.',
-      status: 'green',
-      highlight: 'Scale Strategy'
-    });
-  }
-
+  // Construct complete payload
   return {
-    executiveSummary: execSummary,
-    topProducts,
-    weakTerritories,
-    decliningProducts,
-    recommendations
+    executiveSummary,
+    productAnalysis: {
+      topProduct: {
+        productName: topProdName,
+        revenue: topProdRevStr,
+        reason: `High clinical adoption and strong prescriber loyalty for ${topProdName} drove outstanding sales.`,
+        recommendation: `Maintain steady stock levels to prevent inventory shortage.`
+      },
+      moderateProduct: {
+        productName: modProdName,
+        revenue: modProdRevStr,
+        reason: moderateProductObj ? `Moderate sales velocity due to regional competitor marketing for ${modProdName}.` : 'Middle-tier items are performing steadily.',
+        suggestion: moderateProductObj ? `Introduce promotional bundling with top products to accelerate ${modProdName} sales.` : 'Review pricing strategy.'
+      },
+      weakProduct: {
+        productName: weakProdName,
+        revenue: weakProdRevStr,
+        reason: weakProductObj ? `Low distributor presence and high unit cost resulted in sluggish ${weakProdName} sales.` : 'Lagging items show low buyer pull.',
+        suggestion: weakProductObj ? `Offer regional volume discounts or clinical training to dealers to clear ${weakProdName} inventory.` : 'Assess discontinuing low performing items.'
+      }
+    },
+    territoryAnalysis: {
+      strongTerritory: {
+        territoryName: strongTerrName,
+        revenue: strongTerrRevStr,
+        observation: `Excellent dealer coverage and high demand in the ${strongTerrName} territory.`,
+        recommendation: `Host distributor engagement events to maintain market dominance.`
+      },
+      moderateTerritory: {
+        territoryName: modTerrName,
+        revenue: modTerrRevStr,
+        observation: moderateRegObj ? `Stable buying behavior but lacks deep pharmacy penetration in ${modTerrName}.` : 'Mid-tier markets show steady purchase volumes.',
+        recommendation: moderateRegObj ? `Establish additional pharmacy direct-delivery schemes in ${modTerrName}.` : 'Audit distributor performance.'
+      },
+      weakTerritory: {
+        territoryName: weakTerrName,
+        revenue: weakTerrRevStr,
+        observation: weakRegObj ? `Weak sales rep deployment and sluggish order cycles in ${weakTerrName} region.` : 'Lagging regions require strategic realignments.',
+        recommendation: weakRegObj ? `Deploy senior field sales agents in the ${weakTerrName} region to recover market share.` : 'Realign field forces.'
+      }
+    },
+    trendAnalysis: {
+      previousMonthRevenue: formatCurrency(previousTotal),
+      currentMonthRevenue: formatCurrency(recentTotal),
+      growthPercentage,
+      insight: trendInsight
+    },
+    recommendations: [
+      `Increase inventory buffer for ${topProdName} to leverage high market demand.`,
+      weakProductObj ? `Improve regional marketing campaigns and promotions for ${weakProdName}.` : 'Improve marketing campaigns for slow-moving inventory.',
+      weakRegObj ? `Expand distributor coverage in the ${weakTerrName} territory to increase reach.` : 'Expand distributor coverage in weak territories.',
+      moderateProductObj ? `Monitor ${modProdName} performance for growth and product bundling opportunities.` : 'Monitor mid-tier items for growth opportunities.',
+      strongRegObj ? `Maintain successful sales strategies in the ${strongTerrName} territory.` : 'Maintain successful strategies in key regions.'
+    ]
   };
 };

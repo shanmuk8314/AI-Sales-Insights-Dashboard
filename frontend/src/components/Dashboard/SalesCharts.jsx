@@ -1,8 +1,112 @@
 import { useState, useMemo } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Info } from 'lucide-react';
+import { Info, Download } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
-function SalesCharts({ salesTrends = { weekly: [], monthly: [], quarterly: [], halfYearly: [], yearly: [] } }) {
+const handleDownloadPng = (containerId, chartName) => {
+  const container = document.getElementById(containerId);
+  if (!container) {
+    toast.error('Chart container not found.');
+    return;
+  }
+  const svgElement = container.querySelector('svg');
+  if (!svgElement) {
+    toast.error('SVG element not found inside chart container.');
+    return;
+  }
+
+  try {
+    const clonedSvg = svgElement.cloneNode(true);
+    clonedSvg.style.backgroundColor = '#0f172a';
+    
+    // Ensure text fill colors are visible in dark mode exports
+    const textElements = clonedSvg.querySelectorAll('text');
+    textElements.forEach(t => {
+      if (!t.getAttribute('fill') || t.getAttribute('fill') === 'var(--text-muted)') {
+        t.setAttribute('fill', '#94a3b8');
+      }
+    });
+
+    const svgString = new XMLSerializer().serializeToString(clonedSvg);
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const URL = window.URL || window.webkitURL || window;
+    const blobURL = URL.createObjectURL(svgBlob);
+    
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scale = 2; // double scaling for sharp resolution
+      const width = svgElement.clientWidth || 600;
+      const height = svgElement.clientHeight || 300;
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      
+      const context = canvas.getContext('2d');
+      context.scale(scale, scale);
+      context.drawImage(image, 0, 0, width, height);
+      
+      const pngURL = canvas.toDataURL('image/png');
+      const downloadLink = document.createElement('a');
+      downloadLink.href = pngURL;
+      downloadLink.download = `${chartName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      
+      URL.revokeObjectURL(blobURL);
+      toast.success('Chart downloaded successfully as PNG!');
+    };
+    image.onerror = (err) => {
+      console.error(err);
+      toast.error('Failed to parse chart SVG.');
+    };
+    image.src = blobURL;
+  } catch (error) {
+    console.error(error);
+    toast.error('Failed to export chart as PNG: ' + error.message);
+  }
+};
+
+function SalesCharts({ salesTrends = { weekly: [], monthly: [], quarterly: [], halfYearly: [], yearly: [] }, loading = false }) {
+  if (loading) {
+    return (
+      <div className="charts-grid animate-pulse" style={{ pointerEvents: 'none', marginBottom: '32px' }}>
+        {[1, 2].map((i) => (
+          <div key={i} className="chart-card skeleton-card" style={{ padding: '20px', background: 'rgba(255,255,255,0.015)', border: '1px solid var(--border-color)', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div style={{ height: '16px', width: '40%', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}></div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ height: '24px', width: '100px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px' }}></div>
+                <div style={{ height: '24px', width: '80px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px' }}></div>
+              </div>
+            </div>
+            {/* Chart Placeholder Box */}
+            <div style={{ height: '300px', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '16px', borderLeft: '2px solid rgba(255,255,255,0.04)', borderBottom: '2px solid rgba(255,255,255,0.04)', padding: '0 0 10px 10px', position: 'relative' }}>
+              {/* Grid Lines */}
+              {[1, 2, 3].map((g) => (
+                <div key={g} style={{ position: 'absolute', left: 0, right: 0, bottom: `${g * 25}%`, borderTop: '1px dashed rgba(255,255,255,0.02)' }} />
+              ))}
+              {/* Fake Bars/Lines */}
+              <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%', width: '100%', zIndex: 1 }}>
+                {[60, 40, 75, 50, 90, 65, 80].map((h, idx) => (
+                  <div 
+                    key={idx} 
+                    style={{ 
+                      width: i === 1 ? '4px' : '20px', 
+                      height: `${h}%`, 
+                      background: 'rgba(255,255,255,0.03)', 
+                      borderRadius: i === 1 ? '2px' : '4px 4px 0 0',
+                      border: i === 1 ? '2px solid rgba(255,255,255,0.04)' : 'none'
+                    }} 
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', notation: 'compact', compactDisplay: 'short' }).format(val);
   
   // States for Chart 1: Revenue Growth Trend (Default is All Territories + Monthly)
@@ -192,9 +296,30 @@ function SalesCharts({ salesTrends = { weekly: [], monthly: [], quarterly: [], h
               <option value="halfYearly">Half-Yearly</option>
               <option value="yearly">Yearly</option>
             </select>
+            <button
+              onClick={() => handleDownloadPng('revenue-growth-chart-container', 'Sales_Revenue_Growth_Trend')}
+              title="Download Chart as PNG"
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-primary)',
+                borderRadius: '6px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                outline: 'none'
+              }}
+              className="chart-download-btn"
+            >
+              <Download size={14} />
+            </button>
           </div>
         </div>
-        <div className="chart-container" style={{ minHeight: '300px' }}>
+        <div className="chart-container" id="revenue-growth-chart-container" style={{ minHeight: '300px' }}>
           {trendsData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               {trendsData.length === 1 ? (
@@ -291,6 +416,27 @@ function SalesCharts({ salesTrends = { weekly: [], monthly: [], quarterly: [], h
               <option value="halfYearly">Half-Yearly</option>
               <option value="yearly">Yearly</option>
             </select>
+            <button
+              onClick={() => handleDownloadPng('territory-perf-chart-container', 'Territory_Sales_Performance')}
+              title="Download Chart as PNG"
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-primary)',
+                borderRadius: '6px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                outline: 'none'
+              }}
+              className="chart-download-btn"
+            >
+              <Download size={14} />
+            </button>
           </div>
         </div>
 
@@ -324,7 +470,7 @@ function SalesCharts({ salesTrends = { weekly: [], monthly: [], quarterly: [], h
           </div>
         )}
 
-        <div className="chart-container" style={{ minHeight: '300px' }}>
+        <div className="chart-container" id="territory-perf-chart-container" style={{ minHeight: '300px' }}>
           {regionalTrendData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={regionalTrendData} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>

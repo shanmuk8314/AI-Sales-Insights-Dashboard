@@ -15,43 +15,82 @@ const generateInsightsFromData = async (analyticsData) => {
     throw new Error('Gemini API key is not configured.');
   }
 
-  const model = "gemini-flash-latest";
+  const model = "gemini-2.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
   const prompt = `
-You are a pharmaceutical sales manager explaining sales results to pharmacy owners and sales managers. Your job is to analyze the following sales performance dataset and write simple, direct business insights.
+You are a senior pharmaceutical sales analyst. Your job is to analyze the following sales performance dataset and write professional, structured business insights for executives and pharmacy owners.
 
 ### Sales Performance Indicators (JSON):
 ${JSON.stringify(analyticsData, null, 2)}
 
 ### Writing Guidelines (CRITICAL):
-1. Write in plain, simple English suitable for non-technical users.
-2. Use short, direct sentences. Write a maximum of 2 sentences per card.
-3. Avoid all corporate jargon, technical terms, complex words, and any formatting characters. 
-4. DO NOT use the words: "velocity", "spearheaded", "intervention", "portfolio leadership", "contraction", "optimization".
-5. Write direct statements. For example:
-   - Instead of "Revenue velocity increased significantly", write "Sales increased by 106.6% compared to last month."
-   - Instead of "The West territory is underperforming", write "Sales in the West region are lower than other regions and need attention."
-   - Instead of "Immediate intervention is required", write "This region needs attention."
-   - Instead of "Portfolio leadership is spearheaded by CardioVit", write "CardioVit is the best-selling product."
-6. Explain insights like talking to a pharmacy owner, not a data scientist.
-7. In the "weakTerritories" section, avoid repeating the same information (e.g., do NOT repeat "West region is the slowest region" and "The West region has low sales"). Keep each observation unique and distinct.
-8. DO NOT write long paragraphs. Keep each card text under 20-25 words.
+1. Write in clear, professional English suitable for pharmaceutical business executives.
+2. Avoid all corporate buzzwords like "velocity", "spearheaded", "portfolio leadership", "contraction", "optimization".
+3. DO NOT simply repeat raw numbers, revenue values, or percentages from the dataset. Focus instead on qualitative business drivers (e.g., physician prescribing patterns, regional distributor networks, localized marketing campaigns, stock availability, and competitor actions). Stating numbers is not analysis!
+4. Specifically, for the "reason", "observation", "suggestion", "recommendation", and "executiveSummary" fields, DO NOT start or fill sentences by quoting the KPI revenue values or growth percentages. The numbers are already rendered separately in the UI. Provide strategic interpretations and qualitative explanations.
+5. Keep paragraphs and descriptions concise, clear, and business-focused.
 
 ### Output Requirements:
-1. Return a single JSON object containing exactly these five keys: "executiveSummary", "topProducts", "weakTerritories", "decliningProducts", and "recommendations". Do not include any other top-level keys.
-2. Each key must point to an array of objects. Each object in these arrays MUST have the following schema:
-   - "title": (String) A short card title (e.g., "Revenue", "Top Product", "Weak Region", "Sales Drop", "Action Needed", "Sales Strategy").
-   - "text": (String) Exactly ONE concise, jargon-free explanation or action. The text MUST be under 20-25 words (maximum 2 lines of text when rendered). Do NOT use any markdown formatting, asterisks (**), or bullet points. Write only clean, plain text.
-   - "status": (String) Must be either "green" (positive performance/low risk), "yellow" (moderate concern/stable), or "red" (high priority issue/severe decline).
-   - "highlight": (String) A short focus label (1-3 words max, e.g., product name, region name, percentage change, or category) that represents the core focal point of the card. Do NOT use markdown.
-3. Format currency figures in Indian Rupees (INR) using Lakhs/Crores if large, or standard formatting (e.g., "₹50,000" or "₹12.5L" or "₹1.5Cr").
-4. Content specific rules:
-   - "executiveSummary": Generate 2 cards (typically "Revenue" and "Total Invoices").
-   - "topProducts": Generate 2 cards (typically "Top Product" and "Top Shipped Packs").
-   - "weakTerritories": Generate 1-2 cards (typically "Weak Region" and "Secondary Weak Region"). Ensure unique details for each.
-   - "decliningProducts": Generate 1-2 cards highlighting sales drops or product volume slides.
-   - "recommendations": Generate 2 cards (typically "Recommended Action" and "Sales Strategy") outlining concrete recommended actions based on the weak regions or declining products identified.
+1. Return a single JSON object containing exactly these five keys: "executiveSummary", "productAnalysis", "territoryAnalysis", "trendAnalysis", and "recommendations". Do not include any other top-level keys.
+2. The JSON schema must match exactly the following structure:
+   {
+     "executiveSummary": (String) A concise 2-3 sentence overview of business performance (e.g. comparing month-over-month sales, top product drivers, and region highlights).
+     "productAnalysis": {
+       "topProduct": {
+         "productName": (String) Name of top-selling product by revenue,
+         "revenue": (String) Total revenue and percentage of portfolio (e.g. "₹2.67L (45.3%)"),
+         "reason": (String) Explaining the business reason for strong performance,
+         "recommendation": (String) Sales strategy or stock plan going forward
+       },
+       "moderateProduct": {
+         "productName": (String) Name of moderate performing product,
+         "revenue": (String) Total revenue and percentage of portfolio,
+         "reason": (String) Explaining why performance is moderate,
+         "suggestion": (String) Actionable suggestion to boost growth
+       },
+       "weakProduct": {
+         "productName": (String) Name of lowest performing product,
+         "revenue": (String) Total revenue and percentage of portfolio,
+         "reason": (String) Explaining why performance is lagging,
+         "suggestion": (String) Actionable suggestion to improve performance or clear stock
+       }
+     },
+     "territoryAnalysis": {
+       "strongTerritory": {
+         "territoryName": (String) Name of strongest region/territory by revenue,
+         "revenue": (String) Total revenue and regional contribution percentage (e.g. "₹3.5L (59.1%)"),
+         "observation": (String) High-level business observation of this market,
+         "recommendation": (String) Maintenance or expansion strategy
+       },
+       "moderateTerritory": {
+         "territoryName": (String) Name of moderate region/territory,
+         "revenue": (String) Total revenue and regional contribution,
+         "observation": (String) Observation of market conditions,
+         "recommendation": (String) Growth or partnership strategy to drive sales
+       },
+       "weakTerritory": {
+         "territoryName": (String) Name of weakest region/territory,
+         "revenue": (String) Total revenue and regional contribution,
+         "observation": (String) Observation of why sales are lagging,
+         "recommendation": (String) Recovery plan or clinical sales rep realignment strategy
+       }
+     },
+     "trendAnalysis": {
+       "previousMonthRevenue": (String) Formatted revenue of previous month (e.g. "₹6.68L"),
+       "currentMonthRevenue": (String) Formatted revenue of current month (e.g. "₹5.92L"),
+       "growthPercentage": (String) Formatted growth or decline percentage with prefix (e.g. "+15.0%" or "-11.3%"),
+       "insight": (String) Concise interpretation of monthly sales movement and growth indicators (e.g. "Revenue recovered strongly in June after a decline in May, indicating positive business growth.").
+     },
+     "recommendations": [
+       (String) Actionable suggestion 1,
+       (String) Actionable suggestion 2,
+       (String) Actionable suggestion 3,
+       (String) Actionable suggestion 4,
+       (String) Actionable suggestion 5 (Generate exactly 4-5 flat bullet-point strings)
+     ]
+   }
+3. Format currency figures in Indian Rupees (INR) using Lakhs/Crores if large (e.g. "₹12.5L" or "₹1.5Cr" or standard "₹50,000").
 
 Generate the JSON response matching the specifications above. Return ONLY the raw JSON string. Do NOT enclose in markdown block ticks.
 `;
@@ -72,56 +111,119 @@ Generate the JSON response matching the specifications above. Return ONLY the ra
     }
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout
+  const timeoutDuration = 20000; // 20 seconds timeout
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
-    clearTimeout(timeoutId);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API returned status ${response.status}: ${errorText}`);
-    }
+      clearTimeout(timeoutId);
 
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      throw new Error('Gemini API returned an empty response.');
-    }
-
-    // Try parsing the response as JSON
-    const parsedData = JSON.parse(text.trim());
-    
-    // Simple schema validation
-    const keys = ['executiveSummary', 'topProducts', 'weakTerritories', 'decliningProducts', 'recommendations'];
-    for (const key of keys) {
-      if (!parsedData[key] || !Array.isArray(parsedData[key])) {
-        throw new Error(`Invalid response schema: missing or invalid key "${key}"`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        let status = response.status;
+        let message = errorText;
+        try {
+          const errJson = JSON.parse(errorText);
+          if (errJson.error) {
+            message = errJson.error.message || errorText;
+          }
+        } catch (_) {}
+        
+        const error = new Error(`Gemini API returned status ${status}: ${message}`);
+        error.status = status;
+        throw error;
       }
-      for (const item of parsedData[key]) {
-        if (!item.title || !item.text || !item.status || !item.highlight) {
-          throw new Error(`Invalid item in "${key}": missing required fields (title, text, status, highlight)`);
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error('Gemini API returned an empty response.');
+      }
+
+      // Try parsing the response as JSON
+      const parsedData = JSON.parse(text.trim());
+      
+      // Schema validation
+      const requiredKeys = ['executiveSummary', 'productAnalysis', 'territoryAnalysis', 'trendAnalysis', 'recommendations'];
+      for (const key of requiredKeys) {
+        if (!parsedData[key]) {
+          throw new Error(`Invalid response schema: missing top-level key "${key}"`);
         }
       }
-    }
+      
+      // Validate nested structures
+      const pKeys = ['topProduct', 'moderateProduct', 'weakProduct'];
+      for (const pk of pKeys) {
+        const prod = parsedData.productAnalysis[pk];
+        if (!prod || !prod.productName || !prod.revenue || !prod.reason || !(prod.recommendation || prod.suggestion)) {
+          throw new Error(`Invalid productAnalysis structure for key "${pk}"`);
+        }
+      }
 
-    return parsedData;
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error('Gemini API request timed out after 8 seconds.');
+      const tKeys = ['strongTerritory', 'moderateTerritory', 'weakTerritory'];
+      for (const tk of tKeys) {
+        const terr = parsedData.territoryAnalysis[tk];
+        if (!terr || !terr.territoryName || !terr.revenue || !terr.observation || !terr.recommendation) {
+          throw new Error(`Invalid territoryAnalysis structure for key "${tk}"`);
+        }
+      }
+
+      const trend = parsedData.trendAnalysis;
+      if (!trend || !trend.previousMonthRevenue || !trend.currentMonthRevenue || !trend.growthPercentage || !trend.insight) {
+        throw new Error(`Invalid trendAnalysis structure`);
+      }
+
+      if (!Array.isArray(parsedData.recommendations) || parsedData.recommendations.length < 3) {
+        throw new Error(`Invalid recommendations structure`);
+      }
+
+      return parsedData;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      
+      let errorMsg = err.message;
+      let status = err.status || 500;
+      let isTimeout = false;
+
+      if (err.name === 'AbortError') {
+        errorMsg = `Gemini API request timed out after 20 seconds.`;
+        isTimeout = true;
+        status = 503; // Treat timeout as 503 for retry eligibility
+      }
+
+      // Log detailed error ONLY on the backend
+      console.error(`[Gemini API] Attempt ${attempt} failed. Status: ${status}. Detail: ${errorMsg}`);
+
+      // Determine retry eligibility
+      let shouldRetry = false;
+      if (status === 503 || isTimeout || status === 408) {
+        shouldRetry = true;
+      }
+
+      // For eligible errors, retry up to 2 times (3 attempts total: 1 initial + 2 retries)
+      // For non-eligible errors (429, 401, 403, etc.), stop immediately (1 attempt total)
+      const maxAttempts = shouldRetry ? 3 : 1;
+
+      if (attempt >= maxAttempts) {
+        throw err;
+      }
+
+      const backoffs = [2000, 4000];
+      const delay = backoffs[attempt - 1] || 2000;
+      console.log(`[Gemini API] Retrying in ${delay}ms due to status ${status}...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
-    console.error('Error in geminiService:', err);
-    throw err;
   }
 };
 

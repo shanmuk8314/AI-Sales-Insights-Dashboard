@@ -35,6 +35,8 @@ router.get('/dashboard', salesController.getDashboardData);
 router.get('/insights', insightsController.generateInsights);
 router.get('/ai-insights', aiController.getAiInsights);
 router.get('/upload-history', salesController.getUploadHistory);
+router.get('/filter-options', salesController.getFilterOptions);
+router.get('/analytics-summary', salesController.getAnalyticsSummary);
 
 // Temporary endpoints for PostgreSQL migration verification
 router.get('/test-postgres', async (req, res) => {
@@ -48,9 +50,10 @@ router.get('/test-postgres', async (req, res) => {
       uploadHistoryCount: parseInt(uploadHistoryCountRes.rows[0].count, 10)
     });
   } catch (error) {
+    console.error('test-postgres verification endpoint failed:', error);
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: 'PostgreSQL database error.'
     });
   }
 });
@@ -67,12 +70,13 @@ router.get('/database-status', async (req, res) => {
       uploadHistoryCount: parseInt(uploadHistoryCountRes.rows[0].count, 10)
     });
   } catch (error) {
+    console.error('database-status endpoint query failed:', error.message);
     return res.status(500).json({
       activeDatabase: "postgresql",
       postgresConnected: false,
       salesCount: 0,
       uploadHistoryCount: 0,
-      error: error.message
+      error: 'PostgreSQL database query failure.'
     });
   }
 });

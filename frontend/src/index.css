@@ -103,21 +103,19 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (max-width: 1024px) {
   .content-area {
-    margin-left: 80px;
-    width: calc(100% - 80px);
     padding: 24px;
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .app-container {
     flex-direction: column;
   }
   .content-area {
-    margin-left: 0;
-    width: 100%;
+    margin-left: 0 !important;
+    width: 100% !important;
     padding: 20px;
-    margin-top: 60px;
+    margin-top: 60px !important;
   }
 }
 
@@ -217,55 +215,97 @@ h1, h2, h3, h4, h5, h6 {
   border-top: 1px solid var(--border-color);
 }
 
-@media (max-width: 1024px) {
-  .sidebar {
+/* Sidebar collapsed overrides for desktop */
+@media (min-width: 769px) {
+  .sidebar.collapsed {
     width: 80px;
     padding: 24px 12px;
     align-items: center;
   }
-  .brand-text, .menu-link span, .sidebar-footer {
+  .sidebar.collapsed .brand-text, 
+  .sidebar.collapsed .menu-link span, 
+  .sidebar.collapsed .sidebar-footer {
     display: none;
   }
-  .sidebar-brand {
+  .sidebar.collapsed .sidebar-brand {
     margin-bottom: 32px;
+    justify-content: center;
   }
-  .menu-link {
+  .sidebar.collapsed .menu-link {
     justify-content: center;
     padding: 14px;
   }
-  .menu-link:hover {
+  .sidebar.collapsed .menu-link:hover {
     transform: none;
+  }
+  
+  .content-area.collapsed {
+    margin-left: 80px;
+    width: calc(100% - 80px);
   }
 }
 
-@media (max-width: 640px) {
+/* Mobile responsive drawer styling */
+@media (max-width: 768px) {
   .sidebar {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    width: 260px;
+    height: calc(100vh - 60px);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 999;
+    border-right: 1px solid var(--border-color);
+    padding: 24px 16px;
+  }
+  
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .sidebar-toggle-container {
+    display: none !important; /* Hide collapse toggle on mobile */
+  }
+  
+  .content-area {
+    margin-left: 0 !important;
+    width: 100% !important;
+    margin-top: 60px !important;
+    padding: 20px;
+  }
+  
+  .sidebar-footer {
+    display: none;
+  }
+  
+  .brand-text, .menu-link span {
+    display: block !important;
+  }
+  
+  .sidebar-brand {
+    display: none !important; /* Brand is in header bar on mobile */
+  }
+}
+
+.mobile-header {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 60px;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 20px;
-    border-right: none;
+    background: var(--bg-sidebar);
     border-bottom: 1px solid var(--border-color);
-  }
-  .sidebar-brand {
-    margin-bottom: 0;
-  }
-  .brand-text {
-    display: block;
-    font-size: 1.1rem;
-  }
-  .sidebar-menu {
-    flex-direction: row;
-    gap: 4px;
-    flex: initial;
-  }
-  .menu-link {
-    padding: 10px;
-  }
-  .menu-link span {
-    display: none;
+    padding: 0 20px;
+    z-index: 1000;
   }
 }
 
@@ -696,3 +736,119 @@ h1, h2, h3, h4, h5, h6 {
 .trend-down {
   color: var(--rose);
 }
+
+/* Loading Skeleton animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom CSS Hover Tooltips */
+.tooltip-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-text {
+  visibility: hidden;
+  width: 220px;
+  background-color: rgba(15, 23, 42, 0.98);
+  color: var(--text-primary);
+  text-align: left;
+  border-radius: 8px;
+  padding: 10px 12px;
+  position: absolute;
+  z-index: 999;
+  bottom: 130%; /* Position above the tooltip icon */
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  font-family: var(--font-body);
+  pointer-events: none;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%; /* At the bottom of the tooltip */
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: rgba(15, 23, 42, 0.98) transparent transparent transparent;
+}
+
+.tooltip-container:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* UI/UX Polish Hover & Transition Effects */
+.chart-card, .table-card, .glass-panel {
+  transition: var(--transition) !important;
+}
+
+.chart-card:hover, .table-card:hover {
+  border-color: var(--border-hover) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55) !important;
+  transform: translateY(-3px) !important;
+}
+
+.btn {
+  transition: var(--transition) !important;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--primary-hover), var(--primary)) !important;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45) !important;
+}
+
+/* Section and Grid Spacing polish */
+.kpi-grid, .charts-grid {
+  gap: 24px !important;
+}
+
+/* Responsive refinement queries */
+@media (max-width: 480px) {
+  .page-header {
+    margin-bottom: 18px !important;
+  }
+  .page-title {
+    font-size: 1.45rem !important;
+  }
+  .kpi-value {
+    font-size: 1.55rem !important;
+  }
+  .tooltip-text {
+    width: 180px; /* Slimmer tooltips on mobile */
+  }
+}
+

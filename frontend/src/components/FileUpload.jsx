@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import axios from 'axios';
 import { UploadCloud, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { API_URL } from '../config/api';
+import { toast } from 'react-hot-toast';
 
 function FileUpload({ onUploadSuccess }) {
   const [dragActive, setDragActive] = useState(false);
@@ -32,6 +33,7 @@ function FileUpload({ onUploadSuccess }) {
         setFile(droppedFile);
         setStatus(null);
       } else {
+        toast.error('Only CSV files are supported.');
         setStatus({ type: 'error', message: 'Only CSV files are supported.' });
       }
     }
@@ -45,6 +47,7 @@ function FileUpload({ onUploadSuccess }) {
         setFile(selectedFile);
         setStatus(null);
       } else {
+        toast.error('Only CSV files are supported.');
         setStatus({ type: 'error', message: 'Only CSV files are supported.' });
       }
     }
@@ -71,6 +74,7 @@ function FileUpload({ onUploadSuccess }) {
       });
 
       if (res.data.success) {
+        toast.success('CSV uploaded successfully!');
         setStatus({
           type: 'success',
           message: res.data.message || 'File uploaded successfully!',
@@ -81,6 +85,7 @@ function FileUpload({ onUploadSuccess }) {
           onUploadSuccess(res.data.summary, uploadedFile);
         }
       } else {
+        toast.error(res.data.message || 'CSV validation failed.');
         setStatus({
           type: 'error',
           message: res.data.message || 'Upload failed.',
@@ -88,9 +93,11 @@ function FileUpload({ onUploadSuccess }) {
       }
     } catch (err) {
       console.error(err);
+      const errMsg = err.response?.data?.message || 'Server error occurred during upload.';
+      toast.error(errMsg);
       setStatus({
         type: 'error',
-        message: err.response?.data?.message || 'Server error occurred during upload.',
+        message: errMsg,
       });
     } finally {
       setLoading(false);

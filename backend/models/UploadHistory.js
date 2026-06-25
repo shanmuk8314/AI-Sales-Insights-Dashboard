@@ -4,10 +4,29 @@ const path = require('path');
 // Fallback JSON-based Mock database path for backup
 const dbPath = path.join(__dirname, '../uploads/upload_history.json');
 
-const readDataFromPostgres = async () => {
+const readDataFromPostgres = async (options = {}) => {
   try {
     const { pool } = require('../config/postgres');
-    const res = await pool.query('SELECT * FROM upload_history ORDER BY timestamp DESC');
+    let query = 'SELECT * FROM upload_history';
+    const params = [];
+    const clauses = [];
+    
+    if (options.search) {
+      params.push(`%${options.search}%`);
+      clauses.push(`(file_name ILIKE $${params.length} OR TO_CHAR(timestamp, 'YYYY-MM-DD') LIKE $${params.length})`);
+    }
+    
+    if (clauses.length > 0) {
+      query += ' WHERE ' + clauses.join(' AND ');
+    }
+    
+    if (options.sort === 'oldest') {
+      query += ' ORDER BY timestamp ASC';
+    } else {
+      query += ' ORDER BY timestamp DESC';
+    }
+    
+    const res = await pool.query(query, params);
     return res.rows.map(row => ({
       _id: String(row.id),
       fileName: row.file_name,
@@ -29,7 +48,7 @@ const readDataFromPostgres = async () => {
     console.error("Failed to read upload_history from PostgreSQL, falling back to local JSON:", err.message);
     if (fs.existsSync(dbPath)) {
       const raw = fs.readFileSync(dbPath, 'utf8');
-      return JSON.parse(raw).map(item => ({
+      let list = JSON.parse(raw).map(item => ({
         ...item,
         timestamp: new Date(item.timestamp),
         summary: item.summary ? {
@@ -38,6 +57,24 @@ const readDataFromPostgres = async () => {
           endDate: item.summary.endDate ? new Date(item.summary.endDate) : null
         } : null
       }));
+      
+      if (options.search) {
+        const searchLower = options.search.toLowerCase();
+        list = list.filter(item => {
+          const nameMatch = item.fileName && item.fileName.toLowerCase().includes(searchLower);
+          const dateStr = item.timestamp ? item.timestamp.toISOString().split('T')[0] : '';
+          const dateMatch = dateStr.includes(searchLower);
+          return nameMatch || dateMatch;
+        });
+      }
+      
+      if (options.sort === 'oldest') {
+        list.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      } else {
+        list.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      }
+      
+      return list;
     }
     return [];
   }
@@ -94,8 +131,8 @@ const MockUploadHistoryModel = {
     };
   },
 
-  find: (query) => {
-    let promise = readDataFromPostgres().then(result => {
+  find: (query, options = {}) => {
+    let promise = readDataFromPostgres(options).then(result => {
       let filtered = result;
       if (query && Object.keys(query).length > 0) {
         filtered = filtered.filter(item => {

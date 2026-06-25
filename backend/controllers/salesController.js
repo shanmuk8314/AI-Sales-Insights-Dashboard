@@ -25,13 +25,44 @@ exports.uploadCSV = async (req, res) => {
   const filePath = req.file.path;
   const uploadId = uuidv4();
   const salesToInsert = [];
-  let parsedCount = 0;
-
+  let rowCount = 0;
   let validationError = null;
+
+  // 1. Pre-validate file size (empty file check)
+  try {
+    const stats = fs.statSync(filePath);
+    if (stats.size === 0) {
+      safeUnlinkSync(filePath);
+      return res.status(400).json({ success: false, message: 'CSV validation failed. Empty CSV file.' });
+    }
+  } catch (err) {
+    console.error("Error reading file stats:", err.message);
+  }
 
   fs.createReadStream(filePath)
     .pipe(csv())
     .on('headers', (headers) => {
+      if (validationError) return;
+
+      if (!headers || headers.length === 0 || (headers.length === 1 && !headers[0].trim())) {
+        validationError = 'CSV validation failed. Empty CSV file or missing headers.';
+        return;
+      }
+
+      // Check duplicate headers
+      const seenHeaders = new Set();
+      for (const h of headers) {
+        const cleanH = h.trim();
+        if (!cleanH) continue;
+        const lowerH = cleanH.toLowerCase();
+        if (seenHeaders.has(lowerH)) {
+          validationError = `CSV validation failed. Duplicate header found: "${cleanH}".`;
+          return;
+        }
+        seenHeaders.add(lowerH);
+      }
+
+      // Check required columns
       const required = ['Date', 'Product', 'Category', 'Region', 'UnitsSold', 'UnitPrice'];
       const missing = [];
 
@@ -52,45 +83,74 @@ exports.uploadCSV = async (req, res) => {
       });
 
       if (missing.length > 0) {
-        validationError = `CSV validation failed. Missing required columns: ${missing.join(', ')}.`;
+        validationError = `Missing columns: ${missing.join(', ')}`;
       }
     })
     .on('data', (row) => {
       if (validationError) return;
+      rowCount++;
 
       // Clean properties and standardise property names
-      const dateVal = row.date || row.Date || row.DATE || row.DateOfSale;
+      const dateStr = row.date || row.Date || row.DATE || row.DateOfSale || row.dateofsale || row['date of sale'];
       const productVal = row.product || row.Product || row.PRODUCT;
       const categoryVal = row.category || row.Category || row.CATEGORY;
       const regionVal = row.region || row.Region || row.REGION;
-      
-      const unitsSoldStr = row.unitsSold || row.UnitsSold || row.units_sold || row.Units_Sold || row.UNITS_SOLD;
-      const unitPriceStr = row.unitPrice || row.UnitPrice || row.unit_price || row.Unit_Price || row.UNIT_PRICE;
+      const unitsSoldStr = row.unitsSold || row.UnitsSold || row.units_sold || row.Units_Sold || row.UNITS_SOLD || row['units sold'];
+      const unitPriceStr = row.unitPrice || row.UnitPrice || row.unit_price || row.Unit_Price || row.UNIT_PRICE || row['unit price'];
 
-      const unitsSoldVal = parseInt(unitsSoldStr, 10);
-      const unitPriceVal = parseFloat(unitPriceStr);
-
-      const parsedDate = dateVal ? new Date(dateVal) : null;
-      const isValidDate = parsedDate && !isNaN(parsedDate.getTime());
-
-      if (isValidDate && productVal && categoryVal && regionVal && !isNaN(unitsSoldVal) && !isNaN(unitPriceVal)) {
-        const calculatedRevenue = unitsSoldVal * unitPriceVal;
-        
-        salesToInsert.push({
-          date: parsedDate,
-          product: productVal.trim(),
-          category: categoryVal.trim(),
-          region: regionVal.trim(),
-          unitsSold: unitsSoldVal,
-          unitPrice: unitPriceVal,
-          revenue: calculatedRevenue,
-          uploadId
-        });
-        parsedCount++;
+      if (!dateStr || !productVal || !categoryVal || !regionVal || !unitsSoldStr || !unitPriceStr) {
+        validationError = `CSV validation failed. Row ${rowCount} is missing required data columns.`;
+        return;
       }
+
+      // Validate date
+      const parsedDate = new Date(dateStr.trim());
+      if (isNaN(parsedDate.getTime())) {
+        validationError = `CSV validation failed. Row ${rowCount}: Invalid date "${dateStr}".`;
+        return;
+      }
+
+      // Validate UnitsSold
+      const unitsSoldVal = parseInt(unitsSoldStr, 10);
+      if (isNaN(unitsSoldVal)) {
+        validationError = `CSV validation failed. Row ${rowCount}: UnitsSold must be a valid integer.`;
+        return;
+      }
+      if (unitsSoldVal < 0) {
+        validationError = `CSV validation failed. Row ${rowCount}: UnitsSold cannot be negative (${unitsSoldStr}).`;
+        return;
+      }
+
+      // Validate UnitPrice
+      const unitPriceVal = parseFloat(unitPriceStr);
+      if (isNaN(unitPriceVal)) {
+        validationError = `CSV validation failed. Row ${rowCount}: UnitPrice must be a valid decimal number.`;
+        return;
+      }
+      if (unitPriceVal < 0) {
+        validationError = `CSV validation failed. Row ${rowCount}: UnitPrice cannot be negative (${unitPriceStr}).`;
+        return;
+      }
+
+      const calculatedRevenue = unitsSoldVal * unitPriceVal;
+
+      salesToInsert.push({
+        date: parsedDate,
+        product: productVal.trim(),
+        category: categoryVal.trim(),
+        region: regionVal.trim(),
+        unitsSold: unitsSoldVal,
+        unitPrice: unitPriceVal,
+        revenue: calculatedRevenue,
+        uploadId
+      });
     })
     .on('end', async () => {
       try {
+        if (!validationError && rowCount === 0) {
+          validationError = 'CSV validation failed. Empty CSV file or no data rows found.';
+        }
+
         if (validationError) {
           safeUnlinkSync(filePath);
           if (res.headersSent) return;
@@ -261,8 +321,11 @@ exports.uploadCSV = async (req, res) => {
 
 exports.getDashboardData = async (req, res) => {
   try {
+    const { region, product, month } = req.query;
+    const filters = { region, product, month };
+
     // 1. KPI Cards data and growth rates using the unified growth calculator
-    const metrics = await calculateGrowthMetrics();
+    const metrics = await calculateGrowthMetrics(filters);
     const {
       totalRevenue,
       totalUnitsSold,
@@ -292,7 +355,7 @@ exports.getDashboardData = async (req, res) => {
         }
       },
       { $sort: { revenue: -1 } }
-    ]);
+    ], filters);
 
     // 3. Sales by Category
     const salesByCategory = await Sale.aggregate([
@@ -312,7 +375,7 @@ exports.getDashboardData = async (req, res) => {
         }
       },
       { $sort: { revenue: -1 } }
-    ]);
+    ], filters);
 
     // Calculate top product by revenue
     const topProductAggr = await Sale.aggregate([
@@ -324,10 +387,26 @@ exports.getDashboardData = async (req, res) => {
       },
       { $sort: { revenue: -1 } },
       { $limit: 1 }
-    ]);
+    ], filters);
 
     const topProduct = topProductAggr[0]
       ? { name: topProductAggr[0]._id, revenue: topProductAggr[0].revenue }
+      : { name: 'N/A', revenue: 0 };
+
+    // Calculate weak product by revenue
+    const weakProductAggr = await Sale.aggregate([
+      {
+        $group: {
+          _id: '$product',
+          revenue: { $sum: '$revenue' }
+        }
+      },
+      { $sort: { revenue: 1 } },
+      { $limit: 1 }
+    ], filters);
+
+    const weakProduct = weakProductAggr[0]
+      ? { name: weakProductAggr[0]._id, revenue: weakProductAggr[0].revenue }
       : { name: 'N/A', revenue: 0 };
 
     const bestTerritory = salesByRegion[0]
@@ -364,7 +443,7 @@ exports.getDashboardData = async (req, res) => {
         }
       },
       { $sort: { periodRegion: 1 } }
-    ]);
+    ], filters);
 
     const monthlyTrends = await Sale.aggregate([
       {
@@ -389,7 +468,7 @@ exports.getDashboardData = async (req, res) => {
         }
       },
       { $sort: { periodRegion: 1 } }
-    ]);
+    ], filters);
 
     const quarterlyTrends = await Sale.aggregate([
       {
@@ -434,7 +513,7 @@ exports.getDashboardData = async (req, res) => {
         }
       },
       { $sort: { periodRegion: 1 } }
-    ]);
+    ], filters);
 
     const halfYearlyTrends = await Sale.aggregate([
       {
@@ -467,7 +546,7 @@ exports.getDashboardData = async (req, res) => {
         }
       },
       { $sort: { periodRegion: 1 } }
-    ]);
+    ], filters);
 
     const yearlyTrends = await Sale.aggregate([
       {
@@ -492,10 +571,10 @@ exports.getDashboardData = async (req, res) => {
         }
       },
       { $sort: { periodRegion: 1 } }
-    ]);
+    ], filters);
 
     // 5. Recent sales transactions
-    const recentSales = await Sale.find({})
+    const recentSales = await Sale.find({}, filters)
       .sort({ date: -1 })
       .limit(50);
 
@@ -511,6 +590,7 @@ exports.getDashboardData = async (req, res) => {
         avgOrderValue,
         avgOrderValueGrowth,
         topProduct,
+        weakProduct,
         bestTerritory,
         needsAttention
       },
@@ -536,9 +616,9 @@ exports.getDashboardData = async (req, res) => {
 
 exports.getUploadHistory = async (req, res) => {
   try {
-    const history = await UploadHistory.find({})
-      .sort({ timestamp: -1 })
-      .limit(10);
+    const { search, sort } = req.query;
+    // Pass query and search/sort options
+    const history = await UploadHistory.find({}, { search, sort });
     return res.status(200).json({
       success: true,
       history
@@ -547,6 +627,121 @@ exports.getUploadHistory = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve upload history.',
+      error: error.message
+    });
+  }
+};
+
+exports.getFilterOptions = async (req, res) => {
+  try {
+    let regions = [];
+    let products = [];
+    let months = [];
+
+    try {
+      const regionsRes = await pool.query("SELECT DISTINCT region FROM sales WHERE region IS NOT NULL AND region != '' ORDER BY region");
+      regions = regionsRes.rows.map(r => r.region);
+
+      const productsRes = await pool.query("SELECT DISTINCT product FROM sales WHERE product IS NOT NULL AND product != '' ORDER BY product");
+      products = productsRes.rows.map(p => p.product);
+
+      const monthsRes = await pool.query("SELECT DISTINCT TO_CHAR(sale_date, 'YYYY-MM') as month FROM sales WHERE sale_date IS NOT NULL ORDER BY month DESC");
+      months = monthsRes.rows.map(m => m.month);
+    } catch (dbErr) {
+      console.warn("PostgreSQL connection failed, falling back to local JSON for filter options:", dbErr.message);
+      const dbPath = path.join(__dirname, '../uploads/sales_db.json');
+      if (fs.existsSync(dbPath)) {
+        const raw = fs.readFileSync(dbPath, 'utf8');
+        const sales = JSON.parse(raw);
+        
+        regions = [...new Set(sales.map(s => s.region).filter(Boolean))].sort();
+        products = [...new Set(sales.map(s => s.product).filter(Boolean))].sort();
+        months = [...new Set(sales.map(s => {
+          if (!s.date) return null;
+          const d = new Date(s.date);
+          if (isNaN(d.getTime())) return null;
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          return `${y}-${m}`;
+        }).filter(Boolean))].sort().reverse();
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      regions,
+      products,
+      months
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve filter options.',
+      error: error.message
+    });
+  }
+};
+
+exports.getAnalyticsSummary = async (req, res) => {
+  try {
+    let totalUploads = 0;
+    let totalProducts = 0;
+    let totalRegions = 0;
+    let lastUploadDate = null;
+    let totalAiReports = 0;
+
+    try {
+      const uploadsRes = await pool.query("SELECT COUNT(*) as count FROM upload_history");
+      totalUploads = parseInt(uploadsRes.rows[0].count, 10);
+
+      const productsRes = await pool.query("SELECT COUNT(DISTINCT product) as count FROM sales");
+      totalProducts = parseInt(productsRes.rows[0].count, 10);
+
+      const regionsRes = await pool.query("SELECT COUNT(DISTINCT region) as count FROM sales");
+      totalRegions = parseInt(regionsRes.rows[0].count, 10);
+
+      const lastUploadRes = await pool.query("SELECT MAX(timestamp) as max_time FROM upload_history");
+      lastUploadDate = lastUploadRes.rows[0].max_time;
+
+      totalAiReports = totalUploads;
+    } catch (dbErr) {
+      console.warn("PostgreSQL connection failed, falling back to local JSON for analytics summary:", dbErr.message);
+      const dbPath = path.join(__dirname, '../uploads/sales_db.json');
+      const historyPath = path.join(__dirname, '../uploads/upload_history.json');
+      
+      if (fs.existsSync(historyPath)) {
+        const rawHistory = fs.readFileSync(historyPath, 'utf8');
+        const historyList = JSON.parse(rawHistory);
+        totalUploads = historyList.length;
+        totalAiReports = totalUploads;
+        if (historyList.length > 0) {
+          const timestamps = historyList.map(h => new Date(h.timestamp).getTime()).filter(Boolean);
+          if (timestamps.length > 0) {
+            lastUploadDate = new Date(Math.max(...timestamps)).toISOString();
+          }
+        }
+      }
+      
+      if (fs.existsSync(dbPath)) {
+        const rawSales = fs.readFileSync(dbPath, 'utf8');
+        const salesList = JSON.parse(rawSales);
+        totalProducts = new Set(salesList.map(s => s.product).filter(Boolean)).size;
+        totalRegions = new Set(salesList.map(s => s.region).filter(Boolean)).size;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      totalUploads,
+      totalAiReports,
+      totalProducts,
+      totalRegions,
+      lastUploadDate
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve analytics summary.',
       error: error.message
     });
   }

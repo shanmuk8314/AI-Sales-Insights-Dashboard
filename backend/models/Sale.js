@@ -4,10 +4,37 @@ const path = require('path');
 // Fallback JSON-based Mock database path for backup
 const dbPath = path.join(__dirname, '../uploads/sales_db.json');
 
-const readDataFromPostgres = async () => {
+const readDataFromPostgres = async (filters = {}) => {
   try {
     const { pool } = require('../config/postgres');
-    const res = await pool.query('SELECT * FROM sales ORDER BY sale_date DESC');
+    let query = 'SELECT * FROM sales';
+    const params = [];
+    const clauses = [];
+    
+    if (filters.region && filters.region !== 'All') {
+      params.push(filters.region);
+      clauses.push(`region = $${params.length}`);
+    }
+    if (filters.product && filters.product !== 'All') {
+      params.push(filters.product);
+      clauses.push(`product = $${params.length}`);
+    }
+    if (filters.month && filters.month !== 'All') {
+      const [yearStr, monthStr] = filters.month.split('-');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+      const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+      const end = new Date(year, month, 0, 23, 59, 59, 999);
+      params.push(start, end);
+      clauses.push(`sale_date >= $${params.length - 1} AND sale_date <= $${params.length}`);
+    }
+    
+    if (clauses.length > 0) {
+      query += ' WHERE ' + clauses.join(' AND ');
+    }
+    query += ' ORDER BY sale_date DESC';
+    
+    const res = await pool.query(query, params);
     return res.rows.map(row => ({
       _id: String(row.id),
       date: new Date(row.sale_date),
@@ -25,10 +52,26 @@ const readDataFromPostgres = async () => {
     console.error("Failed to read sales from PostgreSQL, falling back to local JSON:", err.message);
     if (fs.existsSync(dbPath)) {
       const raw = fs.readFileSync(dbPath, 'utf8');
-      return JSON.parse(raw).map(item => ({
+      let sales = JSON.parse(raw).map(item => ({
         ...item,
         date: new Date(item.date)
       }));
+      
+      if (filters.region && filters.region !== 'All') {
+        sales = sales.filter(s => s.region === filters.region);
+      }
+      if (filters.product && filters.product !== 'All') {
+        sales = sales.filter(s => s.product === filters.product);
+      }
+      if (filters.month && filters.month !== 'All') {
+        const [yearStr, monthStr] = filters.month.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+        const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+        const end = new Date(year, month, 0, 23, 59, 59, 999);
+        sales = sales.filter(s => s.date >= start && s.date <= end);
+      }
+      return sales;
     }
     return [];
   }
@@ -215,8 +258,8 @@ const MockSaleModel = {
     }));
   },
 
-  find: (query) => {
-    let promise = readDataFromPostgres().then(result => {
+  find: (query, filters = {}) => {
+    let promise = readDataFromPostgres(filters).then(result => {
       let filtered = result;
       if (query && Object.keys(query).length > 0) {
         filtered = filtered.filter(item => {
@@ -261,8 +304,8 @@ const MockSaleModel = {
     return queryChain;
   },
 
-  findOne: (query) => {
-    let promise = readDataFromPostgres().then(result => {
+  findOne: (query, filters = {}) => {
+    let promise = readDataFromPostgres(filters).then(result => {
       let filtered = result;
       if (query && Object.keys(query).length > 0) {
         filtered = filtered.filter(item => {
@@ -303,8 +346,8 @@ const MockSaleModel = {
     return queryChain;
   },
 
-  aggregate: async (pipeline) => {
-    let result = await readDataFromPostgres();
+  aggregate: async (pipeline, filters = {}) => {
+    let result = await readDataFromPostgres(filters);
 
     for (const stage of pipeline) {
       if (stage.$match) {

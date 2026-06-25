@@ -2,7 +2,9 @@ const insightsService = require('../services/insightsService');
 
 exports.generateInsights = async (req, res) => {
   try {
-    const insights = await insightsService.generateSalesInsights();
+    const { region, product, month } = req.query;
+    const filters = { region, product, month };
+    const insights = await insightsService.generateSalesInsights(filters);
     
     return res.status(200).json({
       success: true,

@@ -1,7 +1,47 @@
 import { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 
-function RecentSalesTable({ recentSales = [] }) {
+function RecentSalesTable({ recentSales = [], loading = false }) {
+  if (loading) {
+    return (
+      <div className="table-card animate-pulse" style={{ pointerEvents: 'none' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ height: '18px', width: '180px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}></div>
+          <div style={{ height: '14px', width: '100px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }}></div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginBottom: '20px', padding: '14px', background: 'rgba(255, 255, 255, 0.01)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+          {[1, 2, 3].map((idx) => (
+            <div key={idx}>
+              <div style={{ height: '10px', width: '40%', background: 'rgba(255,255,255,0.04)', borderRadius: '3px', marginBottom: '6px' }}></div>
+              <div style={{ height: '30px', width: '100%', background: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}></div>
+            </div>
+          ))}
+        </div>
+        <div className="table-wrapper">
+          <table className="custom-table" style={{ opacity: 0.6 }}>
+            <thead>
+              <tr>
+                {['Date', 'Product Name', 'Therapeutic Category', 'Sales Territory', 'Packs Sold', 'Price per Pack', 'Invoice Value'].map((h, idx) => (
+                  <th key={idx}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[1, 2, 3, 4, 5].map((rowIdx) => (
+                <tr key={rowIdx}>
+                  {[1, 2, 3, 4, 5, 6, 7].map((colIdx) => (
+                    <td key={colIdx}>
+                      <div style={{ height: '12px', width: colIdx === 2 ? '80%' : '50%', background: 'rgba(255,255,255,0.04)', borderRadius: '4px' }}></div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
