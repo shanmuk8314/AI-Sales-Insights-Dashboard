@@ -55,7 +55,7 @@ function InsightsPage({ setCurrentPage }) {
     const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
     const url = `${API_URL}/api/ai-insights${queryString}`;
     
-    const res = await axios.get(url, { timeout: 20000 });
+    const res = await axios.get(url, { timeout: 90000 });
     if (res.data.success && res.data.insights) {
       console.log('Successfully fetched insights.');
       if (res.data.metadata) {
@@ -105,6 +105,8 @@ function InsightsPage({ setCurrentPage }) {
           setData(null);
           setApiFailed(true);
           setLoading(false);
+          toast.dismiss();
+          toast.error('AI service is temporarily unavailable. Please try again later.', { id: 'insights-toast' });
         }
       });
     return () => {
@@ -134,6 +136,7 @@ function InsightsPage({ setCurrentPage }) {
   const handleRefresh = () => {
     setIsRefreshing(true);
     setApiFailed(false);
+    toast.dismiss();
     toast.loading('Regenerating AI Insights...', { id: 'insights-toast' });
     fetchInsights(true, { region: selectedRegion, product: selectedProduct, month: selectedMonth })
       .then(resData => {
@@ -141,14 +144,14 @@ function InsightsPage({ setCurrentPage }) {
         setIsCached(resData.cached);
         setApiFailed(false);
         setIsRefreshing(false);
-        toast.success('AI insights generated successfully!', { id: 'insights-toast' });
+        toast.success('AI Insights generated successfully.', { id: 'insights-toast' });
       })
       .catch(err => {
         console.error(err);
         setData(null);
         setApiFailed(true);
         setIsRefreshing(false);
-        toast.error('AI service is currently unavailable. Please try again later.', { id: 'insights-toast' });
+        toast.error('AI service is temporarily unavailable. Please try again later.', { id: 'insights-toast' });
       });
   };
 
@@ -193,7 +196,11 @@ function InsightsPage({ setCurrentPage }) {
         </h3>
         
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '24px', maxWidth: '520px' }}>
-          The AI analysis service is currently unavailable due to API limits or temporary server load. Dashboard metrics, charts, and business analytics remain accurate because they are generated directly from your sales data. Please try generating AI insights again later.
+          The AI service is currently unavailable or the API limit has been reached.
+          <br /><br />
+          Dashboard metrics and charts are still accurate because they are calculated directly from your sales data.
+          <br /><br />
+          Please try again later.
         </p>
         
         <button 
@@ -666,14 +673,19 @@ function InsightsPage({ setCurrentPage }) {
               <>
                 {!isCached ? (
                   <span className="badge badge-success" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--emerald)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--emerald)' }}></span> Live AI
+                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--emerald)' }}></span> Live AI Insights
                   </span>
                 ) : (
                   <span className="badge" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: 'rgba(245, 158, 11, 0.12)', color: 'var(--amber)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--amber)' }}></span> Cached AI
+                    <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--amber)' }}></span> Cached AI Insights
                   </span>
                 )}
               </>
+            )}
+            {!loading && !isRefreshing && apiFailed && (
+              <span className="badge" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: 'rgba(244, 63, 94, 0.12)', color: 'var(--rose)', border: '1px solid rgba(244, 63, 94, 0.3)' }}>
+                <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--rose)' }}></span> AI Unavailable
+              </span>
             )}
           </div>
           <p className="page-subtitle">Detailed performance evaluation and strategic growth indicators</p>

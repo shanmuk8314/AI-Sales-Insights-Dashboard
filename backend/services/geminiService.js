@@ -19,75 +19,108 @@ const generateInsightsFromData = async (analyticsData) => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
   const prompt = `
-You are a senior pharmaceutical sales analyst. Your job is to analyze the following sales performance dataset and write professional, structured business insights for executives and pharmacy owners.
+You are an experienced sales manager explaining sales performance to a business owner with basic English knowledge.
+Analyze the following sales dataset and write simple, structured insights.
 
-### Sales Performance Indicators (JSON):
+### Sales Dataset (JSON):
 ${JSON.stringify(analyticsData, null, 2)}
 
-### Writing Guidelines (CRITICAL):
-1. Write in clear, professional English suitable for pharmaceutical business executives.
-2. Avoid all corporate buzzwords like "velocity", "spearheaded", "portfolio leadership", "contraction", "optimization".
-3. DO NOT simply repeat raw numbers, revenue values, or percentages from the dataset. Focus instead on qualitative business drivers (e.g., physician prescribing patterns, regional distributor networks, localized marketing campaigns, stock availability, and competitor actions). Stating numbers is not analysis!
-4. Specifically, for the "reason", "observation", "suggestion", "recommendation", and "executiveSummary" fields, DO NOT start or fill sentences by quoting the KPI revenue values or growth percentages. The numbers are already rendered separately in the UI. Provide strategic interpretations and qualitative explanations.
-5. Keep paragraphs and descriptions concise, clear, and business-focused.
+### WRITING RULES (CRITICAL):
+1. Use simple English. Write naturally, as if speaking to a person.
+2. Use short sentences. Maximum 15–20 words per sentence.
+3. Do NOT use business jargon or technical AI language.
+4. Do NOT use any of these forbidden words:
+   - leverage
+   - optimize
+   - facilitate
+   - strategic
+   - robust
+   - sophisticated
+   - comprehensive
+   - trajectory
+   - penetration
+   - maximize
+   - substantial
+   - utilization
+   - implementation
+5. Instead, use simple words like:
+   - increase
+   - improve
+   - sell
+   - buy
+   - check
+   - review
+   - keep
+   - grow
+   - support
+   - focus
+6. Do NOT simply repeat raw numbers or percentages from the dataset. Focus on the simple business reasons. Do NOT start or fill sentences by quoting the exact revenue values or growth percentages because they are already shown elsewhere.
+
+### Writing Examples:
+- Instead of "Revenue demonstrated positive month-over-month trajectory." -> Write "Sales increased compared to last month."
+- Instead of "Optimize inventory." -> Write "Keep enough stock."
+- Instead of "Expand distribution network." -> Write "Add more dealers."
+- Instead of "This territory has weak market penetration." -> Write "Sales are low in this region."
+
+Every field in the response ("executiveSummary", all "reason", "suggestion", "recommendation", and "observation" fields in "productAnalysis" and "territoryAnalysis", the "insight" in "trendAnalysis", and all items in "recommendations") MUST follow this writing style.
 
 ### Output Requirements:
 1. Return a single JSON object containing exactly these five keys: "executiveSummary", "productAnalysis", "territoryAnalysis", "trendAnalysis", and "recommendations". Do not include any other top-level keys.
 2. The JSON schema must match exactly the following structure:
    {
-     "executiveSummary": (String) A concise 2-3 sentence overview of business performance (e.g. comparing month-over-month sales, top product drivers, and region highlights).
+     "executiveSummary": (String) A concise 2-3 sentence overview of business performance using the simple style.
      "productAnalysis": {
        "topProduct": {
-         "productName": (String) Name of top-selling product by revenue,
+         "productName": (String) Name of top-selling product,
          "revenue": (String) Total revenue and percentage of portfolio (e.g. "₹2.67L (45.3%)"),
-         "reason": (String) Explaining the business reason for strong performance,
-         "recommendation": (String) Sales strategy or stock plan going forward
+         "reason": (String) Simple explanation of why it sold well,
+         "recommendation": (String) Simple strategy for stock or sales going forward
        },
        "moderateProduct": {
          "productName": (String) Name of moderate performing product,
          "revenue": (String) Total revenue and percentage of portfolio,
-         "reason": (String) Explaining why performance is moderate,
-         "suggestion": (String) Actionable suggestion to boost growth
+         "reason": (String) Simple explanation of why it sold okay,
+         "suggestion": (String) Simple idea to sell more of this product
        },
        "weakProduct": {
          "productName": (String) Name of lowest performing product,
          "revenue": (String) Total revenue and percentage of portfolio,
-         "reason": (String) Explaining why performance is lagging,
-         "suggestion": (String) Actionable suggestion to improve performance or clear stock
+         "reason": (String) Simple explanation of why it sold poorly,
+         "suggestion": (String) Simple idea to clear stock or sell more
        }
      },
      "territoryAnalysis": {
        "strongTerritory": {
-         "territoryName": (String) Name of strongest region/territory by revenue,
+         "territoryName": (String) Name of strongest region by revenue,
          "revenue": (String) Total revenue and regional contribution percentage (e.g. "₹3.5L (59.1%)"),
-         "observation": (String) High-level business observation of this market,
-         "recommendation": (String) Maintenance or expansion strategy
+         "observation": (String) Simple observation about this region,
+         "recommendation": (String) Simple plan to keep sales high here
        },
        "moderateTerritory": {
-         "territoryName": (String) Name of moderate region/territory,
+         "territoryName": (String) Name of moderate region,
          "revenue": (String) Total revenue and regional contribution,
-         "observation": (String) Observation of market conditions,
-         "recommendation": (String) Growth or partnership strategy to drive sales
+         "observation": (String) Simple observation about this region,
+         "recommendation": (String) Simple plan to grow sales in this region
        },
        "weakTerritory": {
-         "territoryName": (String) Name of weakest region/territory,
+         "territoryName": (String) Name of weakest region,
          "revenue": (String) Total revenue and regional contribution,
-         "observation": (String) Observation of why sales are lagging,
-         "recommendation": (String) Recovery plan or clinical sales rep realignment strategy
+         "observation": (String) Simple explanation of why sales are low here,
+         "recommendation": (String) Simple plan to help sales grow here
        }
      },
      "trendAnalysis": {
        "previousMonthRevenue": (String) Formatted revenue of previous month (e.g. "₹6.68L"),
        "currentMonthRevenue": (String) Formatted revenue of current month (e.g. "₹5.92L"),
        "growthPercentage": (String) Formatted growth or decline percentage with prefix (e.g. "+15.0%" or "-11.3%"),
-       "insight": (String) Concise interpretation of monthly sales movement and growth indicators (e.g. "Revenue recovered strongly in June after a decline in May, indicating positive business growth.").
+       "insight": (String) Simple explanation of monthly sales movement and growth using the simple style.
      },
      "recommendations": [
-       (String) Actionable suggestion 1,
-       (String) Actionable suggestion 2,
-       (String) Actionable suggestion 3,
-       (String) Actionable suggestion 4,
-       (String) Actionable suggestion 5 (Generate exactly 4-5 flat bullet-point strings)
+       (String) Simple recommendation 1,
+       (String) Simple recommendation 2,
+       (String) Simple recommendation 3,
+       (String) Simple recommendation 4,
+       (String) Simple recommendation 5 (Generate exactly 4-5 simple flat bullet-point strings)
      ]
    }
 3. Format currency figures in Indian Rupees (INR) using Lakhs/Crores if large (e.g. "₹12.5L" or "₹1.5Cr" or standard "₹50,000").
@@ -111,7 +144,7 @@ Generate the JSON response matching the specifications above. Return ONLY the ra
     }
   };
 
-  const timeoutDuration = 20000; // 20 seconds timeout
+  const timeoutDuration = 15000; // 15 seconds timeout
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     const controller = new AbortController();
@@ -205,14 +238,22 @@ Generate the JSON response matching the specifications above. Return ONLY the ra
       // Log detailed error ONLY on the backend
       console.error(`[Gemini API] Attempt ${attempt} failed. Status: ${status}. Detail: ${errorMsg}`);
 
-      // Determine retry eligibility
+      // Determine retry eligibility: Retry only for 503 or Network Timeout
       let shouldRetry = false;
       if (status === 503 || isTimeout || status === 408) {
         shouldRetry = true;
+      } else if (err instanceof TypeError || err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+        // Handle common network-level connection failures
+        shouldRetry = true;
+      }
+
+      // Explicitly block retry for 429 (quota exceeded), 401 (unauthorized), and 403 (forbidden)
+      if (status === 429 || status === 401 || status === 403) {
+        shouldRetry = false;
       }
 
       // For eligible errors, retry up to 2 times (3 attempts total: 1 initial + 2 retries)
-      // For non-eligible errors (429, 401, 403, etc.), stop immediately (1 attempt total)
+      // For non-eligible errors, stop immediately (1 attempt total)
       const maxAttempts = shouldRetry ? 3 : 1;
 
       if (attempt >= maxAttempts) {
